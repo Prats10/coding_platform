@@ -1,89 +1,356 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Socket.io Test</title>
+    <title>Socket.io Test - Multi User</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial; padding: 20px; }
-        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        body { 
+            font-family: Arial; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .user-selector {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border: 2px solid #2196f3;
+        }
+        .user-selector.selected {
+            background: #c8e6c9;
+            border-color: #4caf50;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 5px; 
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.user-btn {
+            background: #2196f3;
+            padding: 10px 20px;
+        }
+        button.user-btn.selected {
+            background: #4caf50;
+        }
         #log { 
             border: 1px solid #ccc; 
             padding: 10px; 
-            height: 400px; 
+            height: 350px; 
             overflow-y: scroll; 
-            background: #f5f5f5;
+            background: #f9f9f9;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 13px;
         }
-        .message { margin: 5px 0; padding: 5px; background: white; }
+        .message { 
+            margin: 5px 0; 
+            padding: 5px; 
+            background: white;
+            border-left: 3px solid #ccc;
+            padding-left: 10px;
+        }
+        .error { border-left-color: #dc3545; background: #fff5f5; }
+        .success { border-left-color: #28a745; background: #f0fff4; }
+        .info { border-left-color: #17a2b8; background: #f0f8ff; }
+        .warning { border-left-color: #ffc107; background: #fffbf0; }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 200px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .current-user {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            border: 2px solid #ffc107;
+            margin: 10px 0;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <h1>Socket.io Test Client</h1>
-    
-    <div>
-        <button onclick="createRoom()">Create Room</button>
-        <button onclick="joinRoom()">Join Room</button>
+    <div class="container">
+        <h1>🧪 Socket.io Test Client - Multi User</h1>
+        
+        <div class="user-selector" id="userSelector">
+            <h3>👤 Select Your User:</h3>
+            <button class="user-btn" onclick="selectUser(1)">
+                User 1 (testuser)
+            </button>
+            <button class="user-btn" onclick="selectUser(2)">
+                User 2 (testuser2)
+            </button>
+            <p style="margin-top: 10px; color: #666;">
+                💡 Tip: Open this page in two tabs. Use User 1 in first tab, User 2 in second tab!
+            </p>
+        </div>
+
+        <div class="current-user" id="currentUser" style="display: none;">
+            Currently playing as: <span id="userDisplay"></span>
+        </div>
+
+        <div id="connection-status" class="status disconnected">
+            🔴 Disconnected
+        </div>
+
+        <div class="controls">
+            <button id="createBtn" onclick="createRoom()" disabled>
+                Create Room
+            </button>
+            <button id="joinBtn" onclick="joinRoom()" disabled>
+                Join Room
+            </button>
+            <input type="text" id="roomCodeInput" placeholder="Enter room code">
+        </div>
+
+        <div class="controls">
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="reconnect()">Reconnect</button>
+        </div>
+
+        <h3>Event Log:</h3>
+        <div id="log"></div>
     </div>
 
-    <div id="log"></div>
-
     <script>
-        // Connect to server
-        const socket = io('http://localhost:5000');
-
         const log = document.getElementById('log');
+        const statusDiv = document.getElementById('connection-status');
+        const createBtn = document.getElementById('createBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const currentUserDiv = document.getElementById('currentUser');
+        const userDisplay = document.getElementById('userDisplay');
+        const userSelector = document.getElementById('userSelector');
+        
+        let socket;
+        let isConnected = false;
+        let selectedUserId = null;
 
-        function addLog(message, color = 'black') {
+        const users = {
+            1: { username: 'testuser', handle: 'tourist' },
+            2: { username: 'testuser2', handle: 'Petr' }
+        };
+
+        function selectUser(userId) {
+            selectedUserId = userId;
+            
+            // Update UI
+            document.querySelectorAll('.user-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
+            
+            userSelector.classList.add('selected');
+            currentUserDiv.style.display = 'block';
+            userDisplay.textContent = `${users[userId].username} (CF: ${users[userId].handle})`;
+            
+            addLog(`✅ Selected User ${userId}: ${users[userId].username}`, 'success');
+            
+            // Enable buttons if connected
+            if (isConnected) {
+                createBtn.disabled = false;
+                joinBtn.disabled = false;
+            }
+        }
+
+        function connectToServer() {
+            addLog('🔌 Attempting to connect to http://localhost:5000...', 'info');
+            
+            socket = io('http://localhost:5000', {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5
+            });
+
+            setupSocketListeners();
+        }
+
+        function setupSocketListeners() {
+            socket.on('connect', () => {
+                isConnected = true;
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '🟢 Connected to server';
+                
+                if (selectedUserId) {
+                    createBtn.disabled = false;
+                    joinBtn.disabled = false;
+                }
+                
+                addLog('✅ Connected to server!', 'success');
+                addLog(`Socket ID: ${socket.id}`, 'info');
+            });
+
+            socket.on('disconnect', (reason) => {
+                isConnected = false;
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '🔴 Disconnected';
+                createBtn.disabled = true;
+                joinBtn.disabled = true;
+                addLog(`❌ Disconnected from server. Reason: ${reason}`, 'error');
+            });
+
+            socket.on('connect_error', (error) => {
+                addLog(`❌ Connection error: ${error.message}`, 'error');
+                addLog('💡 Make sure backend is running on port 5000', 'warning');
+            });
+
+            socket.on('room_created', (data) => {
+                addLog(`🎉 Room created successfully!`, 'success');
+                addLog(`📋 Room Code: <strong style="font-size: 18px; color: #007bff;">${data.roomCode}</strong>`, 'success');
+                addLog(`📚 Problem: ${data.problem.name} (Rating: ${data.problem.rating})`, 'info');
+                addLog(`🔗 URL: ${data.problem.url}`, 'info');
+                addLog(`💡 Share code "${data.roomCode}" with your opponent!`, 'warning');
+            });
+
+            socket.on('match_started', (data) => {
+                addLog(`⚔️ MATCH STARTED in room ${data.roomCode}!`, 'success');
+                addLog(`📚 Problem: ${data.problem.name}`, 'info');
+                addLog(`⏰ Start time: ${new Date(data.startTime).toLocaleTimeString()}`, 'info');
+                addLog(`🚀 ${data.message}`, 'warning');
+            });
+
+            socket.on('opponent_joined', (data) => {
+                addLog(`👤 Opponent joined: ${data.opponentUsername}`, 'info');
+            });
+
+            socket.on('match_ended', (data) => {
+                addLog(`🏆 MATCH ENDED!`, 'success');
+                addLog(`Winner: ${data.winnerUsername}`, 'success');
+            });
+
+            socket.on('opponent_left', (data) => {
+                addLog(`👋 Opponent left. Reason: ${data.reason || data.message}`, 'warning');
+            });
+
+            socket.on('error', (data) => {
+                addLog(`❌ ERROR: ${data.message}`, 'error');
+            });
+        }
+
+        function addLog(message, type = 'info') {
             const div = document.createElement('div');
-            div.className = 'message';
-            div.style.color = color;
-            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            div.className = `message ${type}`;
+            const time = new Date().toLocaleTimeString();
+            div.innerHTML = `<small>[${time}]</small> ${message}`;
             log.appendChild(div);
             log.scrollTop = log.scrollHeight;
         }
 
-        // Connection events
-        socket.on('connect', () => {
-            addLog('✅ Connected to server', 'green');
-        });
+        function clearLog() {
+            log.innerHTML = '';
+            addLog('📝 Log cleared', 'info');
+        }
 
-        socket.on('disconnect', () => {
-            addLog('❌ Disconnected from server', 'red');
-        });
+        function reconnect() {
+            if (socket) {
+                socket.disconnect();
+            }
+            connectToServer();
+        }
 
-        // Room events
-        socket.on('room_created', (data) => {
-            addLog(`🎉 Room created! Code: <strong>${data.roomCode}</strong>`, 'blue');
-            addLog(`Problem: ${data.problem.name}`, 'blue');
-        });
-
-        socket.on('match_started', (data) => {
-            addLog(`⚔️ Match started in room ${data.roomCode}!`, 'purple');
-            addLog(`Problem: ${data.problem.name}`, 'purple');
-        });
-
-        socket.on('error', (data) => {
-            addLog(`❌ Error: ${data.message}`, 'red');
-        });
-
-        // Test functions
         function createRoom() {
-            addLog('📝 Creating room...');
+            if (!selectedUserId) {
+                addLog('❌ Please select a user first!', 'error');
+                return;
+            }
+
+            if (!isConnected) {
+                addLog('❌ Not connected to server!', 'error');
+                return;
+            }
+
+            addLog(`📝 Creating room as ${users[selectedUserId].username}...`, 'info');
+            addLog(`📊 Data: { userId: ${selectedUserId}, difficulty: "medium" }`, 'info');
+            
             socket.emit('create_room', {
-                userId: 1, // Use the test user ID from database
+                userId: selectedUserId,
                 difficulty: 'medium'
             });
+
+            addLog('⏳ Waiting for response...', 'warning');
         }
 
         function joinRoom() {
-            const roomCode = prompt('Enter room code:');
-            if (roomCode) {
-                addLog(`🚪 Joining room ${roomCode}...`);
-                socket.emit('join_room', {
-                    userId: 1,
-                    roomCode: roomCode.toUpperCase()
-                });
+            const roomCode = document.getElementById('roomCodeInput').value.trim();
+            
+            if (!selectedUserId) {
+                addLog('❌ Please select a user first!', 'error');
+                return;
             }
+
+            if (!roomCode) {
+                addLog('❌ Please enter a room code!', 'error');
+                return;
+            }
+
+            if (!isConnected) {
+                addLog('❌ Not connected to server!', 'error');
+                return;
+            }
+
+            addLog(`🚪 Joining room ${roomCode} as ${users[selectedUserId].username}...`, 'info');
+            
+            socket.emit('join_room', {
+                userId: selectedUserId,
+                roomCode: roomCode.toUpperCase()
+            });
+
+            addLog('⏳ Waiting for response...', 'warning');
         }
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            connectToServer();
+            addLog('👋 Welcome! Please select a user to begin.', 'info');
+        });
     </script>
 </body>
 </html>

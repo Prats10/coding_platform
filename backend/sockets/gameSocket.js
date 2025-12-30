@@ -1,166 +1,297 @@
-// This file handles all real-time events (create room, join room, etc.)
+// sockets/gameSocket.js - WITH CODEFORCES INTEGRATION
 
 const db = require('../config/database');
+const { getRandomProblem, verifyCFHandle } = require('../services/codeforcesService');
+const { startPolling, stopPolling } = require('../services/submissionPoller');
 
-// Store active rooms in memory for quick access
-// Map is like a dictionary: roomCode -> room data
+// Store active rooms in memory
 const activeRooms = new Map();
 
 module.exports = (io) => {
-    // This runs whenever a client connects
     io.on('connection', (socket) => {
         console.log('✅ New client connected:', socket.id);
 
         // ==================== CREATE ROOM ====================
         socket.on('create_room', async (data) => {
+            console.log('📝 Received create_room request:', data);
+            
             try {
-                console.log('📝 Create room request:', data);
-
                 const { userId, difficulty } = data;
 
-                // Generate random 6-character room code
-                const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-                // For now, use a dummy problem (we'll add Codeforces later)
-                const dummyProblem = {
-                    contestId: 1234,
-                    index: 'A',
-                    problemId: '1234A',
-                    name: 'Sample Problem',
-                    rating: 1200,
-                    url: 'https://codeforces.com/problemset/problem/1234/A'
-                };
-
-                // Get user's Codeforces handle from database
+                // Step 1: Get user details
+                console.log('🔍 Looking for user with ID:', userId);
                 const userResult = await db.query(
                     'SELECT username, codeforces_handle FROM users WHERE user_id = $1',
                     [userId]
                 );
 
                 if (userResult.rows.length === 0) {
+                    console.error('❌ User not found');
                     socket.emit('error', { message: 'User not found' });
                     return;
                 }
 
                 const user = userResult.rows[0];
+                console.log('✅ User found:', user.username);
 
-                // Save room to database
+                // Step 2: Check Codeforces handle
+                if (!user.codeforces_handle) {
+                    console.error('❌ User has no Codeforces handle');
+                    socket.emit('error', { 
+                        message: 'Please set your Codeforces handle in your profile first' 
+                    });
+                    return;
+                }
+
+                console.log('🔍 Verifying CF handle:', user.codeforces_handle);
+                const isValidHandle = await verifyCFHandle(user.codeforces_handle);
+                
+                if (!isValidHandle) {
+                    console.error('❌ Invalid Codeforces handle');
+                    socket.emit('error', { 
+                        message: `Invalid Codeforces handle: ${user.codeforces_handle}` 
+                    });
+                    return;
+                }
+
+                console.log('✅ Codeforces handle verified');
+
+                // Step 3: Generate room code
+                const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                console.log('🎲 Generated room code:', roomCode);
+
+                // Step 4: Fetch random problem from Codeforces
+                const minRating = difficulty === 'easy' ? 800 : 
+                                 difficulty === 'medium' ? 1200 : 1600;
+                const maxRating = minRating + 400;
+
+                console.log(`🔍 Fetching problem (difficulty: ${difficulty})...`);
+                const problem = await getRandomProblem(minRating, maxRating);
+
+                // Step 5: Save to database
+                console.log('💾 Saving room to database...');
                 await db.query(
                     `INSERT INTO rooms 
                      (room_code, creator_id, creator_cf_handle, problem_id, problem_name, problem_rating, problem_url, status)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, 'waiting')`,
-                    [roomCode, userId, user.codeforces_handle, dummyProblem.problemId, 
-                     dummyProblem.name, dummyProblem.rating, dummyProblem.url]
+                    [roomCode, userId, user.codeforces_handle, problem.problemId, 
+                     problem.name, problem.rating, problem.url]
                 );
+                console.log('✅ Room saved to database');
 
-                // Store in memory
+                // Step 6: Store in memory
                 activeRooms.set(roomCode, {
                     creator: { userId, socketId: socket.id, cfHandle: user.codeforces_handle },
                     opponent: null,
-                    problem: dummyProblem,
+                    problem: problem,
                     status: 'waiting'
                 });
 
-                // Join the socket room (separate from our room concept)
+                // Step 7: Join socket room
                 socket.join(roomCode);
 
-                // Send success response to creator
+                // Step 8: Send success response
                 socket.emit('room_created', {
                     success: true,
                     roomCode,
-                    problem: dummyProblem
+                    problem: {
+                        id: problem.problemId,
+                        name: problem.name,
+                        rating: problem.rating,
+                        tags: problem.tags,
+                        url: problem.url
+                    }
                 });
 
-                console.log('✅ Room created:', roomCode);
+                console.log('✅ SUCCESS! Room created:', roomCode);
+                console.log('================================================');
 
             } catch (error) {
-                console.error('❌ Error creating room:', error);
-                socket.emit('error', { message: 'Failed to create room' });
+                console.error('❌❌❌ ERROR in create_room:');
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                socket.emit('error', { 
+                    message: 'Failed to create room: ' + error.message 
+                });
             }
         });
 
         // ==================== JOIN ROOM ====================
         socket.on('join_room', async (data) => {
+            console.log('🚪 Received join_room request:', data);
+            
             try {
-                console.log('🚪 Join room request:', data);
-
                 const { userId, roomCode } = data;
 
-                // Check if room exists in database
+                // Step 1: Check if room exists
+                console.log('🔍 Looking for room:', roomCode);
                 const roomResult = await db.query(
                     'SELECT * FROM rooms WHERE room_code = $1 AND status = $2',
                     [roomCode, 'waiting']
                 );
 
                 if (roomResult.rows.length === 0) {
-                    socket.emit('error', { message: 'Room not found or already started' });
+                    console.error('❌ Room not found or already started');
+                    socket.emit('error', { 
+                        message: 'Room not found or match already in progress' 
+                    });
                     return;
                 }
 
-                // Get user details
+                const room = roomResult.rows[0];
+                console.log('✅ Room found');
+
+                // Step 2: Get user details
+                console.log('🔍 Looking for user with ID:', userId);
                 const userResult = await db.query(
                     'SELECT username, codeforces_handle FROM users WHERE user_id = $1',
                     [userId]
                 );
 
                 if (userResult.rows.length === 0) {
+                    console.error('❌ User not found');
                     socket.emit('error', { message: 'User not found' });
                     return;
                 }
 
                 const user = userResult.rows[0];
+                console.log('✅ User found:', user.username);
 
-                // Update database - add opponent
+                // Step 3: Check Codeforces handle
+                if (!user.codeforces_handle) {
+                    console.error('❌ User has no Codeforces handle');
+                    socket.emit('error', { 
+                        message: 'Please set your Codeforces handle first' 
+                    });
+                    return;
+                }
+
+                console.log('🔍 Verifying CF handle:', user.codeforces_handle);
+                const isValidHandle = await verifyCFHandle(user.codeforces_handle);
+                
+                if (!isValidHandle) {
+                    console.error('❌ Invalid Codeforces handle');
+                    socket.emit('error', { 
+                        message: `Invalid Codeforces handle: ${user.codeforces_handle}` 
+                    });
+                    return;
+                }
+
+                console.log('✅ Codeforces handle verified');
+
+                // Step 4: Check if trying to join own room
+                if (room.creator_id === userId) {
+                    console.error('❌ User trying to join own room');
+                    socket.emit('error', { message: 'Cannot join your own room' });
+                    return;
+                }
+
+                // Step 5: Update database
+                console.log('💾 Updating room in database...');
                 await db.query(
                     `UPDATE rooms 
                      SET opponent_id = $1, opponent_cf_handle = $2, status = 'in_progress', match_started_at = NOW()
                      WHERE room_code = $3`,
                     [userId, user.codeforces_handle, roomCode]
                 );
+                console.log('✅ Room updated');
 
-                // Update memory
+                // Step 6: Update memory
                 const roomData = activeRooms.get(roomCode);
-                roomData.opponent = { userId, socketId: socket.id, cfHandle: user.codeforces_handle };
-                roomData.status = 'in_progress';
+                if (roomData) {
+                    roomData.opponent = { 
+                        userId, 
+                        socketId: socket.id, 
+                        cfHandle: user.codeforces_handle 
+                    };
+                    roomData.status = 'in_progress';
+                }
 
-                // Join socket room
+                // Step 7: Join socket room
                 socket.join(roomCode);
 
-                // Notify BOTH players that match is starting
+                // Step 8: Notify both players
                 io.to(roomCode).emit('match_started', {
                     roomCode,
                     problem: roomData.problem,
+                    players: {
+                        creator: roomData.creator.cfHandle,
+                        opponent: user.codeforces_handle
+                    },
                     startTime: new Date(),
-                    message: '⚔️ Match started! Go to Codeforces and submit your solution!'
+                    message: '⚔️ Match started! Submit your solution on Codeforces!'
                 });
 
-                console.log('✅ Match started in room:', roomCode);
+                console.log('✅ Match started!');
+
+                // Step 9: START POLLING FOR SUBMISSIONS! 🎯
+                console.log('▶️  Starting submission polling...');
+                startPolling(roomCode, io);
+
+                console.log('✅ SUCCESS! Everything ready for room:', roomCode);
+                console.log('================================================');
 
             } catch (error) {
-                console.error('❌ Error joining room:', error);
-                socket.emit('error', { message: 'Failed to join room' });
+                console.error('❌❌❌ ERROR in join_room:');
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                socket.emit('error', { 
+                    message: 'Failed to join room: ' + error.message 
+                });
             }
+        });
+
+        // ==================== LEAVE ROOM ====================
+        socket.on('leave_room', async (data) => {
+            console.log('👋 User leaving room:', data);
+            
+            const { userId, roomCode } = data;
+
+            // Update room status
+            await db.query(
+                `UPDATE rooms SET status = 'abandoned' 
+                 WHERE room_code = $1 AND status != 'completed'`,
+                [roomCode]
+            );
+
+            // Stop polling
+            stopPolling(roomCode);
+
+            // Notify other player
+            socket.to(roomCode).emit('opponent_left', {
+                message: 'Opponent left the match'
+            });
+
+            // Clean up
+            activeRooms.delete(roomCode);
+            socket.leave(roomCode);
         });
 
         // ==================== DISCONNECT ====================
         socket.on('disconnect', () => {
             console.log('❌ Client disconnected:', socket.id);
 
-            // Find any rooms this user was in
+            // Find and handle disconnected rooms
             for (const [roomCode, room] of activeRooms.entries()) {
-                if (room.creator?.socketId === socket.id || room.opponent?.socketId === socket.id) {
-                    // Notify other player
-                    io.to(roomCode).emit('opponent_left', {
-                        message: 'Opponent disconnected'
-                    });
-
-                    // Update database
-                    db.query(
-                        `UPDATE rooms SET status = 'abandoned' WHERE room_code = $1`,
-                        [roomCode]
-                    );
-
-                    // Clean up
+                if (room.creator?.socketId === socket.id || 
+                    room.opponent?.socketId === socket.id) {
+                    
+                    console.log(`🧹 Cleaning up room ${roomCode} due to disconnect`);
+                    
+                    // If match in progress, mark as abandoned
+                    if (room.status === 'in_progress') {
+                        db.query(
+                            `UPDATE rooms SET status = 'abandoned' WHERE room_code = $1`,
+                            [roomCode]
+                        ).catch(err => console.error('Error updating room:', err));
+                        
+                        stopPolling(roomCode);
+                        
+                        io.to(roomCode).emit('opponent_left', {
+                            reason: 'disconnected'
+                        });
+                    }
+                    
                     activeRooms.delete(roomCode);
                 }
             }

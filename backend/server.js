@@ -31,6 +31,24 @@ app.get('/health', (req, res) => {
 require('./sockets/gameSocket')(io);
 
 const PORT = process.env.PORT || 5000;
+// Add this BEFORE server.listen() in server.js
+
+// Test Codeforces API
+app.get('/test-codeforces', async (req, res) => {
+    const { testConnection, getRandomProblem } = require('./services/codeforcesService');
+    
+    try {
+        const connected = await testConnection();
+        const problem = await getRandomProblem(800, 1200);
+        
+        res.json({
+            connected,
+            sampleProblem: problem
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 server.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📡 Socket.io server ready for connections`);
