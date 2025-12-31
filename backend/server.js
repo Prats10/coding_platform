@@ -1,3 +1,5 @@
+// backend/server.js - Updated with Authentication
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -13,9 +15,16 @@ const io = socketIo(server, {
     }
 });
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Routes
+const authRoutes = require('./routes/auth');
+
+app.use('/api/auth', authRoutes);
+
+// Health check
 app.get('/', (req, res) => {
     res.json({ 
         message: '🚀 Coding Platform API is running!',
@@ -26,12 +35,6 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', uptime: process.uptime() });
 });
-
-// Socket.io setup
-require('./sockets/gameSocket')(io);
-
-const PORT = process.env.PORT || 5000;
-// Add this BEFORE server.listen() in server.js
 
 // Test Codeforces API
 app.get('/test-codeforces', async (req, res) => {
@@ -49,6 +52,12 @@ app.get('/test-codeforces', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// Socket.io setup
+require('./sockets/gameSocket')(io);
+
+// Start server
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📡 Socket.io server ready for connections`);

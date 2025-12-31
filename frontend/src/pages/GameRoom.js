@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 import socketService from '../services/socket';
 import './GameRoom.css';
 
@@ -9,15 +10,17 @@ function GameRoom() {
     const { roomCode } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
+    const { currentUser } = useUser();
 
     const [status, setStatus] = useState('waiting'); // waiting, in_progress, completed
     const [problem, setProblem] = useState(null);
-    const [opponentHandle, setOpponentHandle] = useState(null);
+    const [opponentUsername, setOpponentUsername] = useState(null);
+    const [opponentCfHandle, setOpponentCfHandle] = useState(null);
     const [winner, setWinner] = useState(null);
     const [pollingMessage, setPollingMessage] = useState('');
     const [copySuccess, setCopySuccess] = useState(false);
 
-    const userId = location.state?.userId || 1;
+    const userId = currentUser.userId;
     const isCreator = location.state?.isCreator || false;
 
     useEffect(() => {
@@ -36,8 +39,30 @@ function GameRoom() {
         // Listen for match started
         socket.on('match_started', (data) => {
             console.log('Match started:', data);
+            console.log('Current user ID:', userId);
+            console.log('Players data:', data.players);
+            
             setProblem(data.problem);
-            setOpponentHandle(data.players.creator || data.players.opponent);
+            
+            // Determine who the opponent is based on user ID
+            let opponent;
+            if (userId === data.players.creatorId) {
+                // I'm the creator, opponent is the joiner
+                opponent = {
+                    username: data.players.opponentUsername,
+                    cfHandle: data.players.opponentCfHandle
+                };
+            } else {
+                // I'm the joiner, opponent is the creator
+                opponent = {
+                    username: data.players.creatorUsername,
+                    cfHandle: data.players.creatorCfHandle
+                };
+            }
+            
+            console.log('Opponent:', opponent);
+            setOpponentUsername(opponent.username);
+            setOpponentCfHandle(opponent.cfHandle);
             setStatus('in_progress');
         });
 
@@ -189,10 +214,13 @@ function GameRoom() {
                     <div className="status-panel">
                         <h3>Match Status</h3>
                         
-                        {opponentHandle && (
+                        {opponentUsername && (
                             <div className="opponent-info">
                                 <p>Playing against:</p>
-                                <div className="opponent-name">{opponentHandle}</div>
+                                <div className="opponent-name">{opponentUsername}</div>
+                                {opponentCfHandle && (
+                                    <div className="opponent-cf">CF: {opponentCfHandle}</div>
+                                )}
                             </div>
                         )}
 

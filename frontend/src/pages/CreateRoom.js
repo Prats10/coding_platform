@@ -2,17 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 import socketService from '../services/socket';
 import './CreateRoom.css';
 
 function CreateRoom() {
     const navigate = useNavigate();
+    const { currentUser } = useUser();
     const [difficulty, setDifficulty] = useState('medium');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // Hardcoded userId for now (we'll add auth later)
-    const userId = 1;
+    const userId = currentUser.userId;
 
     useEffect(() => {
         // Connect to socket

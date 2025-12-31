@@ -210,13 +210,24 @@ module.exports = (io) => {
                 // Step 7: Join socket room
                 socket.join(roomCode);
 
+                // Get creator username
+                const creatorResult = await db.query(
+                    'SELECT username FROM users WHERE user_id = $1',
+                    [room.creator_id]
+                );
+                const creatorUsername = creatorResult.rows[0].username;
+
                 // Step 8: Notify both players
                 io.to(roomCode).emit('match_started', {
                     roomCode,
                     problem: roomData.problem,
                     players: {
-                        creator: roomData.creator.cfHandle,
-                        opponent: user.codeforces_handle
+                        creatorId: room.creator_id,
+                        creatorUsername: creatorUsername,
+                        creatorCfHandle: roomData.creator.cfHandle,
+                        opponentId: userId,
+                        opponentUsername: user.username,
+                        opponentCfHandle: user.codeforces_handle
                     },
                     startTime: new Date(),
                     message: '⚔️ Match started! Submit your solution on Codeforces!'

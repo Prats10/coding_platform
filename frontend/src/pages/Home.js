@@ -1,12 +1,17 @@
-// src/pages/Home.js - Landing Page
+// src/pages/Home.js - Landing Page with User Info
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 import './Home.css';
 
 function Home() {
     const navigate = useNavigate();
+    const { currentUser, logout } = useUser();
     const [joinCode, setJoinCode] = useState('');
+
+    // Debug: Log current user
+    console.log('Current User in Home:', currentUser);
 
     const handleCreateRoom = () => {
         navigate('/create');
@@ -20,8 +25,29 @@ function Home() {
         }
     };
 
+    const handleLogout = () => {
+        if (window.confirm('Are you sure you want to logout?')) {
+            logout();
+            navigate('/login');
+        }
+    };
+
     return (
         <div className="home-container">
+            {/* User Info Bar */}
+            <div className="user-info-bar">
+                <div className="current-user-display">
+                    <span className="user-badge">👤</span>
+                    <div className="user-details">
+                        <strong>{currentUser?.username || 'User'}</strong>
+                        <small>CF: {currentUser?.codeforcesHandle || 'Not set'}</small>
+                    </div>
+                </div>
+                <button className="logout-btn" onClick={handleLogout}>
+                    Logout
+                </button>
+            </div>
+
             <div className="hero-section">
                 <h1 className="title">
                     ⚔️ CodeBattle

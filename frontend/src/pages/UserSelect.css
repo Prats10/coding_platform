@@ -1,0 +1,152 @@
+/* src/pages/UserSelect.css */
+
+.user-select-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-select-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    max-width: 700px;
+    width: 100%;
+    animation: fadeIn 0.5s ease;
+}
+
+.user-select-card h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 2.5rem;
+}
+
+.subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 1.1rem;
+    margin-bottom: 20px;
+}
+
+.info-text {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    color: #856404;
+    line-height: 1.6;
+}
+
+.info-text strong {
+    color: #533f03;
+}
+
+.users-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin: 30px 0;
+}
+
+.user-card {
+    background: #f8f9fa;
+    border: 3px solid transparent;
+    border-radius: 15px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.user-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.user-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    margin: 0 auto 20px;
+}
+
+.user-card h3 {
+    color: #333;
+    margin: 15px 0 10px;
+    font-size: 1.5rem;
+}
+
+.cf-handle {
+    color: #666;
+    margin: 10px 0;
+    font-size: 0.95rem;
+}
+
+.cf-handle strong {
+    color: #667eea;
+}
+
+.select-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 15px;
+    transition: all 0.3s ease;
+}
+
+.select-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.note {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 30px;
+}
+
+.note p {
+    margin: 0;
+    color: #1565c0;
+    font-size: 0.95rem;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .users-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .user-select-card h1 {
+        font-size: 2rem;
+    }
+}
